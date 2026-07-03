@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OpenMM / MD large output files
+*.dcd
+*.xtc
+*.trr
+*.nc
+*.netcdf
+*.chk
+*.vel
+*.log
+*.out
+
+# Restart/output snapshots
+*_snapshot*
+*.ncrst
+*.rst7.*
+*.rst.*
+
+# Keep selected input restart files manually if needed
+# !step6.6_equilibration.rst
+# !b2r1.rst7
+
+# Reports can be regenerated
+*_report.txt
+*_progress.out
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

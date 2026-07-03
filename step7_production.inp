@@ -1,0 +1,77 @@
+# ============================================================
+# Files
+# ============================================================
+
+force_field             = AMBER
+
+topology_file           = step5_input.parm7
+coordinate_file         = step5_input.rst7
+
+# Use none for a fresh AMBER start from coordinate_file.
+# Use step7_production.xml to continue from an OpenMM XML state.
+# Use step7_production.xml.chk to continue from checkpoint.
+input_restart           = none
+
+output_xml              = step7_production.xml
+output_dcd              = step7_production.dcd
+output_report           = step7_production_report.txt
+
+final_amber_restart     = step7_production.rst7
+restart_snapshot_prefix = step7_production_snapshot.rst7
+
+
+# ============================================================
+# Platform
+# ============================================================
+
+platform                = CUDA
+cuda_precision          = single
+
+
+# ============================================================
+# Restart and output control
+# ============================================================
+
+checkpoint_steps        = 50000
+
+rst7_steps              = 50000
+rst7_netcdf             = no
+
+rewrap_coordinates      = yes
+reset_step_and_time     = yes
+generate_velocities_if_missing = yes
+
+
+# ============================================================
+# MD control
+# ============================================================
+
+nstep       = 50000
+dt          = 0.002
+
+nstout      = 1000
+nstdcd      = 50000
+
+coulomb     = PME
+ewald_Tol   = 0.0005
+
+vdw         = Force-switch
+r_on        = 1.0
+r_off       = 1.2
+
+temp        = 310
+fric_coeff  = 1
+
+pcouple     = yes
+p_ref       = 1.0
+p_type      = membrane
+p_XYMode    = XYIsotropic
+p_ZMode     = ZFree
+p_tens      = 0.0
+p_freq      = 100
+
+cons        = HBonds
+rest        = no
+
+lj_lrc      = no
+e14scale    = 1.0

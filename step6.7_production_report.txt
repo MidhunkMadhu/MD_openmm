@@ -1,0 +1,75 @@
+OpenMM production report
+========================
+
+Working directory: /proj/carlssonlab/users/x_midma/charmm-gui-8298510713/openmm
+Input file: step6.7_equilibration.inp
+
+Files
+-----
+Force field: AMBER
+Topology file: b2r1.parm7
+Coordinate file: step6.6_equilibration.rst
+Detected coordinate_file type: openmm_xml_state
+Output XML restart: step6.7_production.xml
+Output trajectory: step6.7_production.dcd
+Final AMBER restart: step6.7_production.rst7
+Output report: step6.7_production_report.txt
+
+Start mode
+----------
+Continuation: no
+Generate velocities: yes
+Rewrap coordinates: yes
+Reset step and time: yes
+Coordinate velocity source: step6.6_equilibration.rst
+Coordinate file has velocities: yes
+Coordinate file step count: 1125000
+Coordinate file time: 1875.000000 ps
+
+Run options
+-----------
+Platform requested: CUDA
+Platform used: CUDA
+CUDA precision: single
+Available platforms: Reference, CPU, CUDA, OpenCL
+Checkpoint every N steps: 50000
+Periodic rst7 every N steps: 50000
+Periodic rst7 prefix: step6.7_production_snapshot.rst7
+rst7 format: ASCII
+
+MD settings
+-----------
+nstep: 10000000
+dt: 0.002000 ps
+nstout: 1000
+nstdcd: 50000
+Simulation length: 20000.000 ps
+Simulation length: 20.000 ns
+Temperature: 310.000 K
+Friction coefficient: 1.000 /ps
+Coulomb method: PME
+vdW method: Force-switch
+r_on: 1.000 nm
+r_off: 1.200 nm
+constraints: HBonds
+pcouple: yes
+p_type: membrane
+p_ref: 1.000 bar
+p_XYMode: XYIsotropic
+p_ZMode: ZFree
+p_tens: 0.000
+p_freq: 100
+
+Step accounting
+---------------
+Start step: 0
+Planned final step: 10000000
+Actual final step: 10000000
+
+Timing
+------
+Start time: 2026-07-02 17:08:19.432305
+End time: 2026-07-03 04:17:59.431068
+Wall time: 40180.00 seconds
+Wall time: 11.161 hours
+Average performance: 43.006 ns/day

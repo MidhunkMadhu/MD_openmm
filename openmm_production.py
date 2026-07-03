@@ -113,12 +113,15 @@ def get_genvel(data):
         genvel = yes
 
     genvel = yes:
-        Generate new velocities from temp after coordinates/state are loaded.
+        Generate new velocities from temp after coordinate_file is loaded.
 
     genvel = no:
         Do not generate new velocities.
         Use velocities from coordinate_file.
         Stop if coordinate_file has no velocities.
+
+    Legacy compatibility:
+        If old key generate_velocities_if_missing exists, use it as genvel.
     """
 
     if "genvel" in data:
@@ -368,7 +371,7 @@ def extract_openmm_xml_step_and_time(filename):
 
 def load_amber_coordinates(filename):
     """
-    Load AMBER coordinates/restart.
+    Load AMBER coordinates or restart.
 
     First tries to load positions, velocities, and box.
     If velocities are absent, falls back to positions and box.
@@ -434,7 +437,9 @@ def use_velocities_from_coordinate_object(simulation, crd, source_name, required
 def load_openmm_xml_state_as_coordinate_file(simulation, filename, genvel):
     print("\nLoading coordinate_file as OpenMM XML state:", filename)
 
-    if (not genvel) and (not openmm_xml_state_has_velocities(filename)):
+    has_vel = openmm_xml_state_has_velocities(filename)
+
+    if (not genvel) and (not has_vel):
         sys.exit(
             "coordinate_file is an OpenMM XML state, but it has no <Velocities> block:\n"
             "%s\n"
@@ -459,8 +464,9 @@ def load_openmm_xml_state_as_coordinate_file(simulation, filename, genvel):
 
     return {
         "kind": "openmm_xml_state",
+        "coordinate_object": None,
         "velocity_source": filename,
-        "has_velocities": openmm_xml_state_has_velocities(filename),
+        "has_velocities": has_vel,
         "step_count": step_count,
         "time_ps": time_ps,
     }
@@ -494,6 +500,7 @@ def load_openmm_checkpoint_as_coordinate_file(simulation, filename):
 
     return {
         "kind": "openmm_checkpoint",
+        "coordinate_object": None,
         "velocity_source": filename,
         "has_velocities": True,
         "step_count": int(simulation.currentStep),
@@ -508,7 +515,7 @@ def load_amber_restart_as_coordinate_file(simulation, filename, fftype):
             "%s" % filename
         )
 
-    print("\nLoading coordinate_file as AMBER restart/coordinate:", filename)
+    print("\nLoading coordinate_file as AMBER restart or coordinate:", filename)
 
     crd = load_amber_coordinates(filename)
 
@@ -552,7 +559,7 @@ def load_gromacs_gro_as_coordinate_file(simulation, filename, fftype):
 def load_charmm_coordinate_as_coordinate_file(simulation, filename, fftype):
     if fftype != "CHARMM":
         sys.exit(
-            "coordinate_file looks like a CHARMM/PDB coordinate file, but force_field is not CHARMM:\n"
+            "coordinate_file looks like a CHARMM or PDB coordinate file, but force_field is not CHARMM:\n"
             "%s" % filename
         )
 
@@ -613,7 +620,7 @@ def load_coordinate_file_auto(simulation, filename, fftype, genvel):
             return load_amber_restart_as_coordinate_file(simulation, filename, fftype)
         except Exception as exc:
             sys.exit(
-                "Could not load coordinate_file as AMBER restart/coordinate:\n"
+                "Could not load coordinate_file as AMBER restart or coordinate:\n"
                 "%s\n"
                 "Original error: %s" % (filename, exc)
             )
@@ -708,6 +715,14 @@ output_xml = get_str(cfg, "output_xml", "step7_production.xml")
 output_dcd = get_str(cfg, "output_dcd", "step7_production.dcd")
 output_report = get_str(cfg, "output_report", "step7_production_report.txt")
 
+progress_file = get_str(
+    cfg,
+    "progress_file",
+    os.path.splitext(output_report)[0] + "_progress.out",
+)
+
+progress_stdout = get_bool(cfg, "progress_stdout", True)
+
 checkpoint_steps = get_int(cfg, "checkpoint_steps", 0)
 
 rst7_netcdf = get_bool(cfg, "rst7_netcdf", False)
@@ -735,8 +750,7 @@ if restart_snapshot_prefix is None:
 
 rewrap_coordinates = get_bool(cfg, "rewrap_coordinates", True)
 
-# Important change:
-# default is no. Only reset if explicitly requested.
+# Default is no. Reset only if explicitly requested.
 reset_step_and_time = get_bool(cfg, "reset_step_and_time", False)
 
 print("Loading parameters")
@@ -758,10 +772,23 @@ if fftype == "CHARMM":
     if toppar is None:
         sys.exit("Error: CHARMM requires toppar_file")
 
-    from omm_readparams import read_top, read_params
+    from omm_readparams import read_top, read_params, read_crd, gen_box
 
     top = read_top(topfile, "CHARMM")
     params = read_params(toppar)
+
+    coord_type_for_charmm = detect_coordinate_file_type(crdfile)
+
+    if coord_type_for_charmm == "charmm_coordinate":
+        try:
+            crd_for_box = read_crd(crdfile, "CHARMM")
+            top = gen_box(top, crd_for_box)
+        except Exception as exc:
+            print(
+                "WARNING: could not apply CHARMM box from coordinate_file: %s" % exc,
+                file=sys.stderr,
+            )
+
     topology = top.topology
 
 elif fftype == "AMBER":
@@ -769,12 +796,11 @@ elif fftype == "AMBER":
     topology = top.topology
 
 elif fftype == "GROMACS":
-    # If coordinate_file is a GRO file, use its box while reading topology.
-    # If coordinate_file is an OpenMM XML/checkpoint, the actual box will be loaded later.
     coord_type_for_top = detect_coordinate_file_type(crdfile)
 
     if coord_type_for_top == "gromacs_gro":
         gro_for_box = GromacsGroFile(crdfile)
+
         top = GromacsTopFile(
             topfile,
             periodicBoxVectors=gro_for_box.getPeriodicBoxVectors(),
@@ -849,15 +875,12 @@ if inputs.e14scale != 1.0:
 if inputs.pcouple == "yes":
     system = barostat(system, inputs)
 
-# CHARMM restraints need a coordinate object. Since the coordinate_file can now
-# be OpenMM XML/checkpoint, restraints are only supported when coordinate_file
-# is a CHARMM coordinate file.
 if fftype == "CHARMM" and inputs.rest == "yes":
     coord_type = detect_coordinate_file_type(crdfile)
 
     if coord_type != "charmm_coordinate":
         sys.exit(
-            "CHARMM restraints require coordinate_file to be a CHARMM coordinate/PDB file."
+            "CHARMM restraints require coordinate_file to be a CHARMM coordinate or PDB file."
         )
 
     from omm_readparams import read_crd
@@ -1002,9 +1025,11 @@ if inputs.nstdcd > 0:
         )
     )
 
+progress_handle = open(progress_file, "w", buffering=1)
+
 simulation.reporters.append(
     StateDataReporter(
-        sys.stdout,
+        progress_handle,
         inputs.nstout,
         step=True,
         time=True,
@@ -1017,6 +1042,25 @@ simulation.reporters.append(
         separator="\t",
     )
 )
+
+print("Progress file:", progress_file)
+
+if progress_stdout:
+    simulation.reporters.append(
+        StateDataReporter(
+            sys.stdout,
+            inputs.nstout,
+            step=True,
+            time=True,
+            potentialEnergy=True,
+            temperature=True,
+            progress=True,
+            remainingTime=True,
+            speed=True,
+            totalSteps=planned_final_step,
+            separator="\t",
+        )
+    )
 
 chk_interval = 0
 
@@ -1064,7 +1108,11 @@ if rst7_steps != 0:
 start_wall = time.time()
 start_datetime = datetime.datetime.now()
 
-simulation.step(inputs.nstep)
+try:
+    simulation.step(inputs.nstep)
+finally:
+    progress_handle.flush()
+    progress_handle.close()
 
 end_wall = time.time()
 end_datetime = datetime.datetime.now()
@@ -1129,6 +1177,7 @@ with open(output_report, "w") as f:
     f.write("Detected coordinate_file type: %s\n" % start_info["kind"])
     f.write("Output XML restart: %s\n" % output_xml)
     f.write("Output trajectory: %s\n" % output_dcd)
+    f.write("Progress file: %s\n" % progress_file)
     f.write("Final AMBER restart: %s\n" % (written_rst7 if written_rst7 else "FAILED"))
     f.write("Output report: %s\n" % output_report)
 
@@ -1153,6 +1202,7 @@ with open(output_report, "w") as f:
     f.write("Platform used: %s\n" % platform.getName())
     f.write("CUDA precision: %s\n" % cuda_precision)
     f.write("Available platforms: %s\n" % ", ".join(enabled_platforms))
+    f.write("Progress also to stdout: %s\n" % ("yes" if progress_stdout else "no"))
     f.write("Checkpoint every N steps: %s\n" % (chk_interval if chk_interval > 0 else "off"))
     f.write("Periodic rst7 every N steps: %s\n" % (rst7_interval if rst7_interval > 0 else "off"))
     f.write("Periodic rst7 prefix: %s\n" % restart_snapshot_prefix)
